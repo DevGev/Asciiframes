@@ -1,0 +1,30 @@
+[package]
+name = "asciiframes"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlCanvasElement",
+    "HtmlImageElement",
+    "CanvasRenderingContext2d",
+    "ImageData",
+    "CssStyleDeclaration",
+    "console",
+] }
+js-sys = "0.3"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+console_error_panic_hook = "0.1"
+
+[profile.release]
+opt-level = "s"   # optimise for size
+lto = true
+

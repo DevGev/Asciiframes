@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>asciiframes</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0a;
+      color: #eee;
+      font-family: 'Source Code Pro', monospace;
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1.5rem 1rem 3rem;
+      gap: 1rem;
+    }
+
+    h1 { letter-spacing: 0.5em; color: #444; font-size: 0.85rem; }
+
+    /* Canvas mounts here — the div sizes to match the canvas naturally */
+    #app {
+      background: #000;
+      line-height: 0; /* remove inline baseline gap around canvas */
+      max-width: 100vw;
+      overflow: auto;
+    }
+
+    .row {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 30vw;
+      width: 100%;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.5rem 1.2rem;
+      max-width: 30vw;
+      width: 100%;
+    }
+
+    .sg { display: flex; flex-direction: column; gap: 0.2rem; }
+    .sg label {
+      display: flex;
+      justify-content: space-between;
+      color: #888;
+      font-size: 0.7rem;
+    }
+    input[type=range]    { width: 100%; accent-color: #555; cursor: pointer; }
+    input[type=file]     { color: #555; background: none; border: none; cursor: pointer; font-size: 0.75rem; }
+    input[type=checkbox] { accent-color: #888; cursor: pointer; }
+
+    .check-row { display: flex; align-items: end; gap: 0.5rem; color: #555; font-size: 0.75rem; }
+
+    button {
+      padding: 0.35rem 1.4rem;
+      background: #111;
+      border: 1px solid #333;
+      color: #999;
+      font-family: inherit;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      cursor: pointer;
+    }
+    button:hover { background: #1c1c1c; }
+
+    #status { font-size: 0.7rem; color: #444; min-height: 1em; }
+  </style>
+</head>
+<body>
+  <h1>asciiframes</h1>
+
+  <div id="app"></div>
+
+  <div class="row">
+    <input type="file" id="file" accept="image/*" />
+    <button id="run">▶ run</button>
+    <span id="status"></span>
+  </div>
+
+  <div class="grid">
+    <div class="sg">
+      <label>interpolation limit <span id="interpolation-limit-v">10</span></label>
+      <input type="range" id="interpolation-limit" min="1" max="100" value="10">
+    </div>
+    <div class="sg">
+      <label>frame count<span id="frame-count-v">50</span></label>
+      <input type="range" id="frame-count" min="1" max="500" value="50">
+    </div>
+    <div class="sg">
+      <label>delay ms <span id="delay-ms-v">50</span></label>
+      <input type="range" id="delay-ms" min="0" max="300" value="50" step="1">
+    </div>
+    <div class="sg">
+      <label>pixel split % <span id="pixel-fraction-v">0</span></label>
+      <input type="range" id="pixel-fraction" min="0" max="100" value="0" step="0.1">
+    </div>
+    <div class="sg">
+      <label>pixel split % end<span id="pixel-fraction-end-v">0</span></label>
+      <input type="range" id="pixel-fraction-end" min="0" max="100" value="0" step="0.1">
+    </div>
+
+    <div class="check-row">
+      <input type="checkbox" id="enable-pixel-fraction-end" />
+      <label for="enable-pixel-fraction-end">enable split % end</label>
+    </div>
+
+    <div class="sg">
+      <label>background color
+      <input type="color" id="background-color" value="#0d0d0d" />
+      </label>
+    </div>
+
+    <div class="check-row">
+      <input type="checkbox" id="black-and-white" />
+      <label for="black-and-white">black and white</label>
+    </div>
+
+    <div style="opacity: 0%; min-height: 30px;">seperator</div>
+
+    <div class="check-row">
+      <input type="checkbox" id="record" />
+      <label for="record">record and save as video</label>
+    </div>
+  </div>
+
+  <script type="module">
+    import init, { start, Config } from "./pkg/asciiframes.js";
+
+    await init();
+
+    let recorder = null;
+    let chunks = [];
+
+    function stopRecording() {
+      if (!recorder) return;
+      recorder.stop();
+      recorder = null;
+    }
+
+    function startRecording(canvas) {
+      const stream = canvas.captureStream(30);
+      recorder = new MediaRecorder(stream);
+      chunks = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "asciiframes.webm";
+        a.click();
+      };
+
+      recorder.start();
+    }
+
+    for (const [id, suffix] of [["frame-count",""],["interpolation-limit",""],["delay-ms",""],["pixel-fraction","%"],["pixel-fraction-end", "%"]])
+      document.getElementById(id).addEventListener("input", e =>
+        document.getElementById(id+"-v").textContent = e.target.value + suffix);
+
+    const v = id => Number(document.getElementById(id).value);
+    const s = id => document.getElementById(id).value;
+    const chk = id => document.getElementById(id).checked;
+
+    document.getElementById("run").addEventListener("click", async () => {
+      const file = document.getElementById("file").files[0];
+      if (!file) { document.getElementById("status").textContent = "pick an image"; return; }
+      document.getElementById("status").textContent = "decoding…";
+      document.getElementById("app").innerHTML = "";
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const pixelFraction = v("pixel-fraction") / 100;
+      const pixelFractionEnd = v("pixel-fraction-end") / 100;
+
+      const config = new Config(
+        bytes,
+        v("frame-count"),
+        v("interpolation-limit"),
+        v("delay-ms"),
+        pixelFraction,
+        chk("enable-pixel-fraction-end") ? pixelFractionEnd : null,
+        !chk("black-and-white"),
+        s("background-color"));
+
+      start("app", config);
+
+      document.getElementById("status").textContent = "";
+
+      if (chk("record")) {
+        document.getElementById("status").textContent = "recording…";
+        startRecording(document.querySelector("#app canvas"));
+        setTimeout(() => {
+          stopRecording();
+          document.getElementById("status").textContent = "saved video";
+        }, v("frame-count") * v("delay-ms") + 500);
+      }
+    });
+  </script>
+</body>
+</html>
